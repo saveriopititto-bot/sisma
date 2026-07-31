@@ -133,7 +133,38 @@ if st.sidebar.button("Esegui Analisi", type="primary"):
         # --- GRAFICI ---
         st.subheader("Visualizzazione Analitica", divider='gray')
         
-        # GRAFICO 1: Serie Storica (Barre)
+        # GRAFICO 1: Andamento Reale Sismicità (Scatter dei Terremoti)
+        fig0 = go.Figure()
+        fig0.add_trace(go.Scatter(
+            x=df.index,
+            y=df['Magnitude'],
+            mode='markers',
+            marker=dict(
+                size=df['Magnitude'] ** 2,
+                color=df['Magnitude'],
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(title="Magnitudo")
+            ),
+            text="Mag: " + df['Magnitude'].astype(str) + "<br>" + df.index.strftime('%Y-%m-%d %H:%M'),
+            hoverinfo='text',
+            name='Sismi Registrati'
+        ))
+        
+        separator_date = pd.to_datetime(f"{target_year}-01-01")
+        fig0.add_vline(x=separator_date, line_dash="dash", line_color="rgba(0,0,0,0.7)", line_width=2,
+                       annotation_text="  Inizio Anno di Verifica", annotation_position="top right")
+        
+        fig0.update_layout(
+            title="Andamento Reale Sismicità (Eventi Registrati vs Tempo)",
+            xaxis_title="Tempo",
+            yaxis_title="Magnitudo",
+            template="plotly_white",
+            showlegend=False
+        )
+        st.plotly_chart(fig0, use_container_width=True)
+        
+        # GRAFICO 2: Serie Storica (Barre)
         fig1 = go.Figure()
         
         colors = ['#2ca02c' if val > 0 else '#d62728' for val in df_tri['area']]
@@ -160,33 +191,47 @@ if st.sidebar.button("Esegui Analisi", type="primary"):
         st.plotly_chart(fig1, use_container_width=True)
         
         
-        # GRAFICO 2: Overlay Cumulato Gen-Dic
+        # GRAFICO 3: Overlay Cumulato Gen-Dic
         fig2 = go.Figure()
         
         month_names = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic']
+        
+        cum_areas_triennio = []
         
         # Linee per i 3 anni del Triennio di Analisi
         for year in [triennium_start, year_zero, triennium_end]:
             df_year = df_tri[df_tri['Year'] == year]
             if not df_year.empty:
                 cum_area = df_year['area'].cumsum().values
+                cum_areas_triennio.append(cum_area)
                 fig2.add_trace(go.Scatter(
                     x=month_names[:len(cum_area)],
                     y=cum_area,
-                    mode='lines+markers',
+                    mode='lines',
                     name=f"Accumulo {year}",
                     line=dict(width=2, dash='dash', color='gray'),
-                    opacity=0.6
+                    opacity=0.4
                 ))
                 
-        # Linea per l'Anno di Verifica (Target)
+        # Linea per l'Andamento Previsto (Media dei 3 anni)
+        if cum_areas_triennio:
+            mean_cum_area = np.mean(cum_areas_triennio, axis=0)
+            fig2.add_trace(go.Scatter(
+                x=month_names[:len(mean_cum_area)],
+                y=mean_cum_area,
+                mode='lines+markers',
+                name='Andamento Previsto (Modello)',
+                line=dict(width=4, color='royalblue', dash='dashdot')
+            ))
+                
+        # Linea per l'Anno di Verifica (Target - Andamento Reale)
         if not df_target.empty:
             cum_area_target = df_target['area'].cumsum().values
             fig2.add_trace(go.Scatter(
                 x=month_names[:len(cum_area_target)],
                 y=cum_area_target,
                 mode='lines+markers',
-                name=f"Target ({target_year})",
+                name=f"Andamento Reale Target ({target_year})",
                 line=dict(width=4, color='red')
             ))
             
