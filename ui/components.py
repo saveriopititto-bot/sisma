@@ -14,12 +14,12 @@ def render_sidebar():
     st.sidebar.header("Input Temporale")
     year_zero = st.sidebar.number_input("Anno Zero Centrale", value=2014, min_value=1900, max_value=2100, step=1)
 
-    triennium_start = year_zero - 1
-    triennium_end = year_zero + 1
-    target_year = year_zero + 2
+    triennium_start = year_zero - 5
+    triennium_end = year_zero + 5
+    target_year = year_zero + 6
 
     st.sidebar.markdown(f"""
-    **Triennio di Analisi (Accumulo):** {triennium_start}, {year_zero}, {triennium_end}  
+    **Anni di Riferimento (-5 / 0 / +5):** {triennium_start}, {year_zero}, {triennium_end}  
     **Anno di Verifica (Target):** {target_year}
     """)
 
@@ -129,7 +129,11 @@ def render_overlay(df_tri, triennium_start, year_zero, triennium_end, target_yea
             
     # Andamento Previsto (Media)
     if cum_areas_triennio:
-        mean_cum_area = np.mean(cum_areas_triennio, axis=0)
+        max_len = max(len(arr) for arr in cum_areas_triennio)
+        padded = np.full((len(cum_areas_triennio), max_len), np.nan)
+        for i, arr in enumerate(cum_areas_triennio):
+            padded[i, :len(arr)] = arr
+        mean_cum_area = np.nanmean(padded, axis=0)
         fig2.add_trace(go.Scatter(
             x=month_names[:len(mean_cum_area)],
             y=mean_cum_area,

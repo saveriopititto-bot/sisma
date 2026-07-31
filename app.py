@@ -26,7 +26,8 @@ from math_engine.engine import MathEngine
 st.title("Sismologia Computazionale Analitica")
 st.markdown("""
 Analisi dell'accumulo e rilascio di energia tettonica tramite **Triangoli Locali Differenziali**.
-Il modello analizza i 3 anni precedenti a un potenziale evento per validare l'accumulo di energia.
+Il modello confronta 3 anni di riferimento, distanziati di **5 anni prima e 5 anni dopo**
+l'Anno Zero centrale, con l'Anno di Verifica successivo, per validare l'accumulo di energia.
 """)
 
 # --- SIDEBAR E INPUTS ---
@@ -34,14 +35,10 @@ inputs = render_sidebar()
 
 # --- ESECUZIONE MAIN ENGINE ---
 if inputs['execute']:
-    # Per mantenere la coerenza col triennio, impostiamo 3 anni prima del target_year e 0 anni dopo.
-    years_before = 3
-    years_after = 0
-    
-    # Adattiamo il fetch per il nuovo range, mantenendo il mese extra iniziale (Dicembre)
-    fetch_start = f"{inputs['target_year'] - years_before - 1}-12-01T00:00:00"
-    fetch_end = f"{inputs['target_year'] + years_after}-12-31T23:59:59"
-    
+    # Il fetch copre da dicembre dell'anno precedente triennium_start fino a target_year
+    fetch_start = f"{inputs['triennium_start'] - 1}-12-01T00:00:00"
+    fetch_end = f"{inputs['target_year']}-12-31T23:59:59"
+
     # 1. Fetching Dati
     df_raw = MathEngine.fetch_ingv_data(
         fetch_start, fetch_end,
@@ -54,10 +51,10 @@ if inputs['execute']:
     if df_raw is not None and not df_raw.empty:
         df_events, df_tri = MathEngine.process_data(
             df_raw,
+            triennium_start=inputs['triennium_start'],
+            triennium_end=inputs['triennium_end'],
             target_year=inputs['target_year'],
             min_mag=inputs['min_mag'],
-            years_before=years_before,
-            years_after=years_after,
             data_end=fetch_end
         )
         

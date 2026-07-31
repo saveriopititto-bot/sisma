@@ -35,7 +35,7 @@ class MathEngine:
             response.raise_for_status()
             df = pd.read_csv(StringIO(response.text), sep='|')
 
-            # FIX #2: l'header del formato text e' "#EventID|Time|..."
+            # FIX: l'header del formato text e' "#EventID|Time|..."
             # -> la prima colonna arriva come "#EventID". Normalizziamo.
             df.columns = df.columns.str.strip().str.lstrip('#')
 
@@ -48,23 +48,21 @@ class MathEngine:
             return None
 
     @staticmethod
-    def process_data(df_raw, target_year, min_mag,
-                     years_before=5, years_after=5, data_end=None):
+    def process_data(df_raw, triennium_start, triennium_end, target_year, min_mag, data_end=None):
         """
-        Finestra di analisi: [target_year - years_before, target_year + years_after]
-        (default -5 / 0 / +5).
+        Costruisce la serie mensile continua di energia (log10) da cui vengono
+        derivati i Triangoli Locali Differenziali, coprendo l'intero intervallo
+        da dicembre di (triennium_start - 1) fino a target_year.
 
-        data_end: (opzionale) fine effettiva della copertura dati (l'end_time
-        usato nel fetch). Serve a non generare mesi oltre i dati disponibili.
+        Gli anni di riferimento discreti (triennium_start, year_zero incluso
+        implicitamente tra i due, triennium_end, target_year) vengono poi
+        estratti da questa serie a livello di UI (render_metrics/render_overlay).
+
+        data_end: fine effettiva della copertura dati (l'end_time usato nel
+        fetch). Evita di generare mesi "fantasma" oltre i dati disponibili.
         """
         df = df_raw.copy()
         df['Time'] = pd.to_datetime(df['Time'])
-
-        # --- Finestra temporale estesa -5 / +5 ---
-        window_start = pd.Timestamp(year=target_year - years_before, month=1, day=1)
-        window_end = pd.Timestamp(year=target_year + years_after, month=12, day=31,
-                                  hour=23, minute=59, second=59)
-        df = df[(df['Time'] >= window_start) & (df['Time'] <= window_end)]
 
         # Energia di Gutenberg-Richter
         df['Energy_J'] = 10 ** (MathEngine.GR_B * df['Magnitude'] + MathEngine.GR_A)
@@ -77,28 +75,25 @@ class MathEngine:
         df.set_index('Time', inplace=True)
         monthly_energy = df['Energy_J'].resample('MS').sum()
 
-        # --- FIX #1: niente mesi futuri fantasma ---
+        # --- FIX: niente mesi futuri fantasma ---
         # L'ultimo mese valido e' il piu' restrittivo tra:
-        #   a) dicembre di (target_year + years_after)
+        #   a) dicembre di target_year
         #   b) l'ultimo mese SOLARE COMPLETO rispetto a oggi
         #   c) l'ultimo mese completo coperto dai dati (se data_end e' fornito)
         current_month_start = pd.Timestamp.today().normalize().replace(day=1)
         last_complete_month = current_month_start - pd.offsets.MonthBegin(1)
 
-        end_month = min(pd.Timestamp(year=target_year + years_after, month=12, day=1),
-                        last_complete_month)
+        end_month = min(pd.Timestamp(year=target_year, month=12, day=1), last_complete_month)
 
         if data_end is not None:
-            data_end = pd.Timestamp(data_end)
-            data_end_month_start = data_end.normalize().replace(day=1)
+            data_end_ts = pd.Timestamp(data_end)
+            data_end_month_start = data_end_ts.normalize().replace(day=1)
             # Se data_end non chiude il mese, quel mese e' incompleto -> escluso
-            if data_end < (data_end_month_start + pd.offsets.MonthBegin(1) - pd.Timedelta(seconds=1)):
+            if data_end_ts < (data_end_month_start + pd.offsets.MonthBegin(1) - pd.Timedelta(seconds=1)):
                 data_end_month_start -= pd.offsets.MonthBegin(1)
             end_month = min(end_month, data_end_month_start)
 
-        # Un mese in piu' all'inizio per avere il "prev" del primo triangolo
-        all_months = pd.date_range(start=window_start - pd.offsets.MonthBegin(1),
-                                   end=end_month, freq='MS')
+        all_months = pd.date_range(start=f"{triennium_start - 1}-12-01", end=end_month, freq='MS')
 
         if len(all_months) < 2:
             st.warning("Finestra temporale insufficiente per calcolare i triangoli.")
