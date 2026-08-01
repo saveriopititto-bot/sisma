@@ -220,3 +220,14 @@ def test_note_diagnostiche_presenti(catalog):
     testo = " ".join(res.notes).lower()
     assert "bin vuoti" in testo
     assert "concentrazione" in testo
+
+
+def test_annual_matrix_canali(catalog):
+    from math_engine import annual_matrix
+    res = run(make_config(), catalog=catalog)
+    mat_m = annual_matrix(res.binned, "m_eq")
+    mat_n = annual_matrix(res.binned, "n")
+    assert not mat_m.empty
+    assert not mat_n.empty
+    assert (mat_n.values >= 0).all()
+

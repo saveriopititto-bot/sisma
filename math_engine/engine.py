@@ -345,6 +345,7 @@ def aggregate(
 
     S_eff = S * (width.mean() / width) if normalize_exposure else S
 
+    # Modello di bias: Censura degli intervalli vuoti (Proposizione 5.1)
     e_min = float(energy_from_magnitude(mc))
     censored = n == 0
     S_hat = np.where(censored, e_min, S_eff)
