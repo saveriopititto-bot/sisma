@@ -78,6 +78,14 @@ class Region:
     min_lon: float
     max_lon: float
 
+    def __post_init__(self) -> None:
+        if self.min_lat > self.max_lat:
+            object.__setattr__(self, "min_lat", min(self.min_lat, self.max_lat))
+            object.__setattr__(self, "max_lat", max(self.min_lat, self.max_lat))
+        if self.min_lon > self.max_lon:
+            object.__setattr__(self, "min_lon", min(self.min_lon, self.max_lon))
+            object.__setattr__(self, "max_lon", max(self.min_lon, self.max_lon))
+
     def as_params(self) -> dict[str, float]:
         return {
             "minlat": self.min_lat, "maxlat": self.max_lat,
@@ -164,53 +172,73 @@ def fetch_catalog(
 
     Solleva `EmptyCatalogError` se la finestra non contiene eventi utilizzabili,
     `CatalogError` per errori di rete o di formato. Non stampa nulla.
-
-    La soglia `mc` viene applicata lato servizio e poi riverificata: la
-    proprieta' M_i >= mc e' un'ipotesi da cui dipende la semantica della
-    censura in `aggregate`, quindi va garantita e non assunta.
     """
+    start_ts = pd.Timestamp(start)
+    end_ts = pd.Timestamp(end)
+
     params = {
-        "starttime": pd.Timestamp(start).isoformat(),
-        "endtime": pd.Timestamp(end).isoformat(),
-        "minmag": mc,
+        "starttime": start_ts.strftime("%Y-%m-%dT%H:%M:%S"),
+        "endtime": end_ts.strftime("%Y-%m-%dT%H:%M:%S"),
+        "minmag": float(mc),
         "format": "text",
         **region.as_params(),
     }
 
+    headers = {
+        "User-Agent": "SISMA-Sismologia-Analitica/1.0 (INGV FDSNWS Client)",
+        "Accept": "text/plain, */*",
+    }
+
     try:
-        response = requests.get(url, params=params, timeout=timeout)
+        response = requests.get(url, params=params, headers=headers, timeout=timeout)
     except requests.exceptions.RequestException as exc:
-        raise CatalogError(f"errore di rete verso FDSNWS: {exc}") from exc
+        raise CatalogError(f"Errore di connessione verso il servizio INGV FDSNWS: {exc}") from exc
 
     if response.status_code == 204 or not response.text.strip():
-        raise EmptyCatalogError("nessun evento nella finestra richiesta")
+        raise EmptyCatalogError(
+            f"Nessun evento sismico trovato dall'INGV per l'area selezionata "
+            f"[{region.min_lat:.2f}–{region.max_lat:.2f}°N, {region.min_lon:.2f}–{region.max_lon:.2f}°E], "
+            f"periodo {start_ts:%Y-%m-%d} → {end_ts:%Y-%m-%d} con M >= {mc}. "
+            "Prova ad abbassare la soglia M_c o ad ampliare il bounding box."
+        )
 
     try:
         response.raise_for_status()
     except requests.exceptions.HTTPError as exc:
-        raise CatalogError(f"FDSNWS ha risposto {response.status_code}") from exc
+        raise CatalogError(f"Servizio INGV FDSNWS ha risposto con codice HTTP {response.status_code}") from exc
 
     try:
         df = pd.read_csv(StringIO(response.text), sep="|")
     except Exception as exc:
-        raise CatalogError(f"risposta non decodificabile: {exc}") from exc
+        raise CatalogError(f"Risposta del catalogo INGV non decodificabile: {exc}") from exc
 
-    # L'header del formato text e' "#EventID|Time|...": il cancelletto va tolto.
+    # L'header del formato text e' "#EventID|Time|...": pulizia spazi e cancelletto.
     df.columns = df.columns.str.strip().str.lstrip("#")
 
     missing = [c for c in _REQUIRED_COLUMNS if c not in df.columns]
     if missing:
-        raise CatalogError(f"colonne assenti nella risposta: {missing}")
+        raise CatalogError(f"Colonne essenziali assenti nel catalogo INGV: {missing}")
 
-    df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
+    # Rimozione duplicati
+    if "EventID" in df.columns:
+        df = df.drop_duplicates(subset=["EventID"])
+
+    # Conversione date in UTC naive
+    df["Time"] = pd.to_datetime(df["Time"], errors="coerce", utc=True).dt.tz_localize(None)
     df["Magnitude"] = pd.to_numeric(df["Magnitude"], errors="coerce")
     df = df.dropna(subset=["Time", "Magnitude"])
+
     if df.empty:
-        raise EmptyCatalogError("tutti gli eventi scartati in fase di parsing")
+        raise EmptyCatalogError("Tutti gli eventi scaricati sono stati scartati in fase di parsing")
+
+    # Filtro sul tipo evento se presente (esclude esplosioni di cava se esplicite)
+    if "EventType" in df.columns:
+        non_seismic = df["EventType"].astype(str).str.lower().isin(["quarry blast", "explosion", "other event"])
+        df = df[~non_seismic]
 
     df = df[df["Magnitude"] >= mc]
     if df.empty:
-        raise EmptyCatalogError(f"nessun evento con M >= {mc}")
+        raise EmptyCatalogError(f"Nessun evento sismico con magnitudo M >= {mc}")
 
     return df.sort_values("Time").reset_index(drop=True)
 
