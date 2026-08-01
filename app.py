@@ -26,8 +26,8 @@ from math_engine.engine import MathEngine
 st.title("Sismologia Computazionale Analitica")
 st.markdown("""
 Analisi dell'accumulo e rilascio di energia tettonica tramite **Triangoli Locali Differenziali**.
-Il modello confronta 3 anni di riferimento, distanziati di **5 anni prima e 5 anni dopo**
-l'Anno Zero centrale, con l'Anno di Verifica successivo, per validare l'accumulo di energia.
+Il modello confronta l'intero periodo di **11 anni di riferimento** (da **5 anni prima a 5 anni dopo**
+l'Anno Zero centrale, ovvero da $N-5$ a $N+5$) con l'Anno di Verifica successivo (Target), per validare l'accumulo di energia.
 """)
 
 # --- SIDEBAR E INPUTS ---
