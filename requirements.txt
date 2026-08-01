@@ -1,5 +1,10 @@
-streamlit
-pandas
-numpy
-requests
-plotly
+# Vincoli a intervallo: consentono le patch di sicurezza, escludono le major
+# che rompono l'API. Per un deploy riproducibile congela con `pip freeze`.
+streamlit>=1.40,<2
+pandas>=2.2,<3
+numpy>=1.26,<3
+requests>=2.31,<3
+plotly>=5.22,<7
+
+# Solo per i test
+pytest>=8.0,<9

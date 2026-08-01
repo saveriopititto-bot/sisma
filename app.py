@@ -1,75 +1,132 @@
+"""
+app.py
+======
+
+Punto di ingresso Streamlit.
+
+Il file non contiene matematica ne' grafica: raccoglie gli input, invoca il
+motore e distribuisce il risultato ai componenti. La cache vive qui perche' e'
+una preoccupazione dell'interfaccia, non del calcolo.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
 import streamlit as st
+
+from math_engine import (
+    CatalogError,
+    Config,
+    EmptyCatalogError,
+    Region,
+    fetch_catalog,
+    run,
+    synthetic_catalog,
+)
+from ui.components import (
+    render_annual_comparison,
+    render_channels,
+    render_diagnostics,
+    render_differentials,
+    render_events,
+    render_sidebar,
+    render_summary,
+)
 
 st.set_page_config(page_title="Sismologia Computazionale Analitica", layout="wide")
 
-# Inject Custom CSS dalla cartella UI
-def load_css(file_name):
-    try:
-        with open(file_name) as f:
-            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-    except Exception:
-        pass
 
-load_css("ui/style.css")
+def load_css(path: str) -> None:
+    file = Path(path)
+    if not file.exists():
+        return
+    st.markdown(f"<style>{file.read_text()}</style>", unsafe_allow_html=True)
 
-# Import Moduli
-from ui.components import (
-    render_sidebar, 
-    render_metrics, 
-    render_scatter, 
-    render_bar_chart, 
-    render_overlay
-)
-from math_engine.engine import MathEngine
 
-# --- TITOLO APP ---
-st.title("Sismologia Computazionale Analitica")
-st.markdown("""
-Analisi dell'accumulo e rilascio di energia tettonica tramite **Triangoli Locali Differenziali**.
-Il modello confronta l'intero periodo di **11 anni di riferimento** (da **5 anni prima a 5 anni dopo**
-l'Anno Zero centrale, ovvero da $N-5$ a $N+5$) con l'Anno di Verifica successivo (Target), per validare l'accumulo di energia.
-""")
+@st.cache_data(show_spinner="Interrogazione del web service FDSNWS in corso...")
+def cached_fetch(
+    min_lat: float, max_lat: float, min_lon: float, max_lon: float,
+    start: pd.Timestamp, end: pd.Timestamp, mc: float, timeout: int,
+) -> pd.DataFrame:
+    """
+    Wrapper cacheabile di `fetch_catalog`.
 
-# --- SIDEBAR E INPUTS ---
-inputs = render_sidebar()
-
-# --- ESECUZIONE MAIN ENGINE ---
-if inputs['execute']:
-    # Il fetch copre da dicembre dell'anno precedente triennium_start fino a target_year
-    fetch_start = f"{inputs['triennium_start'] - 1}-12-01T00:00:00"
-    fetch_end = f"{inputs['target_year']}-12-31T23:59:59"
-
-    # 1. Fetching Dati
-    df_raw = MathEngine.fetch_ingv_data(
-        fetch_start, fetch_end,
-        inputs['min_lat'], inputs['max_lat'],
-        inputs['min_lon'], inputs['max_lon'],
-        inputs['min_mag']
+    La firma usa solo tipi primitivi: st.cache_data calcola la chiave dagli
+    argomenti, e passare una dataclass funzionerebbe solo finche' resta
+    hashable, dipendenza fragile che conviene non introdurre.
+    """
+    return fetch_catalog(
+        region=Region(min_lat, max_lat, min_lon, max_lon),
+        start=start, end=end, mc=mc, timeout=timeout,
     )
-    
-    # 2. Elaborazione & Routing UI
-    if df_raw is not None and not df_raw.empty:
-        df_events, df_tri = MathEngine.process_data(
-            df_raw,
-            triennium_start=inputs['triennium_start'],
-            triennium_end=inputs['triennium_end'],
-            target_year=inputs['target_year'],
-            min_mag=inputs['min_mag'],
-            data_end=fetch_end
+
+
+def analyze(config: Config, synthetic: bool):
+    """Esegue l'analisi traducendo le eccezioni in messaggi. None se fallisce."""
+    try:
+        if synthetic:
+            catalog = synthetic_catalog(mc=config.mc)
+            st.warning(
+                "Analisi su catalogo sintetico: i dati sono generati localmente "
+                "e non rappresentano sismicita' reale.", icon="⚠️",
+            )
+        else:
+            catalog = cached_fetch(
+                config.region.min_lat, config.region.max_lat,
+                config.region.min_lon, config.region.max_lon,
+                config.start, config.requested_end, config.mc, config.timeout,
+            )
+        return run(config, catalog=catalog)
+    except EmptyCatalogError as exc:
+        st.warning(f"Nessun evento utilizzabile: {exc}")
+    except CatalogError as exc:
+        st.error(f"Impossibile ottenere il catalogo: {exc}")
+    return None
+
+
+def main() -> None:
+    load_css("ui/style.css")
+
+    st.title("Sismologia Computazionale Analitica")
+    st.markdown(
+        "Analisi differenziale del **rilascio** di energia sismica a partire dai "
+        "cataloghi INGV. Il modello confronta un anno di verifica con "
+        "l'inviluppo degli anni di riferimento, su due canali indipendenti: "
+        "l'energia rilasciata e il tasso di attivita'."
+    )
+
+    config, execute, synthetic = render_sidebar()
+
+    if execute:
+        result = analyze(config, synthetic)
+        if result is not None and not result.binned.empty:
+            st.session_state["result"] = result
+        elif result is not None:
+            st.warning("Finestra troppo corta: nessun bin completo da analizzare.")
+
+    result = st.session_state.get("result")
+    if result is None:
+        st.info(
+            "Imposta i parametri nella barra laterale e avvia l'analisi. "
+            "Senza connessione all'INGV puoi spuntare *Usa catalogo sintetico* "
+            "per esplorare l'interfaccia.", icon="👈",
         )
-        
-        # Salviamo in sessione per l'ispettore (la pagina "Spiegazione Modello")
-        st.session_state['df_raw'] = df_raw
-        st.session_state['df_events'] = df_events
-        st.session_state['df_tri'] = df_tri
-        
-        # Rendering delle metriche
-        render_metrics(df_tri, inputs['triennium_start'], inputs['year_zero'], inputs['triennium_end'], inputs['target_year'])
-        
-        # Rendering dei 3 grafici Plotly
-        render_scatter(df_events, inputs['target_year'])
-        render_bar_chart(df_tri, inputs['target_year'])
-        render_overlay(df_tri, inputs['triennium_start'], inputs['year_zero'], inputs['triennium_end'], inputs['target_year'])
-        
-    else:
-        st.warning("Nessun dato trovato per i parametri selezionati o i terremoti registrati non superano la magnitudo minima indicata.")
+        return
+
+    render_diagnostics(result)
+    render_summary(result)
+    render_events(result)
+    render_channels(result)
+    render_differentials(result)
+    render_annual_comparison(result)
+
+    with st.expander("Dati per bin"):
+        st.dataframe(result.binned, use_container_width=True)
+    with st.expander("Dati per transizione"):
+        st.dataframe(result.diff, use_container_width=True)
+
+
+if __name__ == "__main__":
+    main()
