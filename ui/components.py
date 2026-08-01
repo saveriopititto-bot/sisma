@@ -160,16 +160,22 @@ def render_summary(result: AnalysisResult) -> None:
 
     st.subheader("Sintesi delle Metriche Non Lineari", divider="gray")
 
+    tot_var = s.get("total_variation", 0.0)
+    pos_part = s.get("positive_part", 0.0)
+    rms_val = s.get("rms", 0.0)
+    max_j = s.get("max_jump", 0.0)
+    net_m_val = s.get("net_m", 0.0)
+
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Variazione totale (V)", f"{s.get('total_variation', 0.0):.2f} M",
+    c1.metric("Variazione totale (V)", f"{tot_var:.2f} M",
               help="Somma dei valori assoluti delle altezze differenziali. "
                    "Non lineare, quindi distingue percorsi diversi anche a "
                    "parita' di estremi.")
-    c2.metric("Intensificazione accumulata (V+)", f"{s.get('positive_part', 0.0):+.2f} M",
+    c2.metric("Intensificazione accumulata (V+)", f"{pos_part:+.2f} M",
               help="Somma delle altezze differenziali positive (solo intensificazioni).")
-    c3.metric("RMS delle variazioni (ρ)", f"{s.get('rms', 0.0):.2f} M",
+    c3.metric("RMS delle variazioni (ρ)", f"{rms_val:.2f} M",
               help="Radice media quadratica delle variazioni differenziali.")
-    c4.metric("Salto massimo", f"{s.get('max_jump', 0.0):+.2f} M",
+    c4.metric("Salto massimo", f"{max_j:+.2f} M",
               help="Massima intensificazione fra due bin consecutivi.")
 
     with st.expander("Differenza fra gli estremi (lineare) e concentrazione"):
@@ -177,7 +183,7 @@ def render_summary(result: AnalysisResult) -> None:
         cc1.metric("Concentrazione", f"{result.concentration:.1%}",
                    help="Frazione dell'energia totale dovuta ai soli eventi massimi "
                         "di ciascun bin.")
-        cc2.metric("Δ magnitudo equivalente, primo → ultimo bin", f"{s.get('net_m', 0.0):+.2f} M",
+        cc2.metric("Δ magnitudo equivalente, primo → ultimo bin", f"{net_m_val:+.2f} M",
                    help="La somma con segno telescopizza: vale la differenza "
                         "fra l'ultimo e il primo bin.")
 
@@ -290,10 +296,11 @@ def render_differentials(result: AnalysisResult) -> None:
     if d.empty:
         return
 
+    win = result.config.window
     st.subheader("Analisi differenziale e filtro di riduzione del rumore", divider="gray")
     st.markdown(
-        f"Confronto tra la **differenza a un passo** ($\\Delta M_{\\mathrm{{eq}}}$) e il "
-        f"**filtro di pendenza locale su finestra scorrevole** ($w={result.config.window}$) "
+        "Confronto tra la **differenza a un passo** ($\\Delta M_{\\mathrm{eq}}$) e il "
+        f"**filtro di pendenza locale su finestra scorrevole** ($w={win}$) "
         "per l'attenuazione del rumore stocastico."
     )
 
@@ -316,7 +323,7 @@ def render_differentials(result: AnalysisResult) -> None:
         fig.add_trace(go.Scatter(
             x=d.index, y=slope_per_bin, mode="lines",
             line=dict(color=ACC, width=3),
-            name=f"Filtro pendenza locale (finestra w={result.config.window})",
+            name=f"Filtro pendenza locale (finestra w={win})",
         ))
 
     _target_marker(fig, result.config.target_year)
@@ -329,7 +336,7 @@ def render_differentials(result: AnalysisResult) -> None:
     st.caption(
         "Verde: intensificazione (Δ > 0). Rosso: attenuazione (Δ < 0). "
         "Le barre sbiadite coinvolgono un bin vuoto censurato dal modello di bias. "
-        f"La linea blu rappresenta il **filtro di pendenza locale** su finestra $w={result.config.window}$, "
+        f"La linea blu rappresenta il **filtro di pendenza locale** su finestra $w={win}$, "
         "che esclude i bin censurati per ridurre il rumore stocastico."
     )
 
@@ -344,19 +351,19 @@ def render_differentials(result: AnalysisResult) -> None:
         fig3.update_layout(
             template="plotly_white", height=260, showlegend=False,
             xaxis_title="tempo",
-            yaxis_title=f"M equivalente / anno (finestra {result.config.window} bin)",
+            yaxis_title=f"M equivalente / anno (finestra {win} bin)",
             margin=dict(l=0, r=0, t=30, b=0),
         )
         st.plotly_chart(fig3, use_container_width=True)
 
     with st.expander("Modello di bias e note metodologiche"):
         st.markdown(
-            """
-            - **Modello di bias della censura (Proposizione 5.1)**: nei bin vuoti l'energia è imputata al pavimento $\\hat S_k = \\max(S_k, E(M_c)) = E(M_c)$. Questo evita $\\log 0$ ma colloca i bin vuoti al livello di fondo $M_c$. Le transizioni da/verso bin vuoti misurano la distanza dalla soglia di completezza e non una variazione sismica fisica.
-            - **Filtro su finestra scorrevole (Sezione 7.3)**: la regressione ai minimi quadrati su $w$ bin riduce il rumore stocastico di singolo evento ed esclude dal fit i bin censurati per evitare pendenze fittizie.
-            - **Bias di esposizione**: nella partizione calendariale i mesi durano da 28 a 31 giorni (febbraio raccoglie il 10% in meno di giorni rispetto a gennaio). L'opzione *Normalizza l'esposizione* rimuove questo bias.
-            - **Bias della magnitudo**: la relazione di Gutenberg-Richter $10^{1.5M+4.8}$ è tarata su $M_s$, mentre il catalogo INGV usa prevalentemente $M_L$ e $M_w$.
-            """
+            r"""
+- **Modello di bias della censura (Proposizione 5.1)**: nei bin vuoti l'energia è imputata al pavimento $\hat S_k = \max(S_k, E(M_c)) = E(M_c)$. Questo evita $\log 0$ ma colloca i bin vuoti al livello di fondo $M_c$. Le transizioni da/verso bin vuoti misurano la distanza dalla soglia di completezza e non una variazione sismica fisica.
+- **Filtro su finestra scorrevole (Sezione 7.3)**: la regressione ai minimi quadrati su $w$ bin riduce il rumore stocastico di singolo evento ed esclude dal fit i bin censurati per evitare pendenze fittizie.
+- **Bias di esposizione**: nella partizione calendariale i mesi durano da 28 a 31 giorni (febbraio raccoglie il 10% in meno di giorni rispetto a gennaio). L'opzione *Normalizza l'esposizione* rimuove questo bias.
+- **Bias della magnitudo**: la relazione di Gutenberg-Richter $10^{1.5M+4.8}$ è tarata su $M_s$, mentre il catalogo INGV usa prevalentemente $M_L$ e $M_w$.
+"""
         )
 
 
@@ -457,10 +464,12 @@ def render_annual_comparison(result: AnalysisResult) -> None:
             )
             st.plotly_chart(fig2, use_container_width=True)
 
+    min_yr = reference.index.min()
+    max_yr = reference.index.max()
     st.caption(
         f"Ogni mese del **rilevamento dell'anno di verifica {target}** e' confrontato "
         f"con la **previsione del modello** (mediana e inviluppo 10–90% degli anni di riferimento "
-        f"{reference.index.min()}–{reference.index.max()}) sui due canali: energia rilasciata e tasso di attivita'."
+        f"{min_yr}–{max_yr}) sui due canali: energia rilasciata e tasso di attivita'."
     )
 
     with st.expander("Matrice anno × mese (Magnitudo equivalente)"):

@@ -1,9 +1,5 @@
 """
 Pagina di documentazione interattiva del modello.
-
-Riscritta per eliminare la contraddizione di segno presente nella versione
-precedente, dove la legenda del grafico dichiarava "Rilascio > 0" mentre
-questa pagina affermava l'opposto.
 """
 
 from __future__ import annotations
