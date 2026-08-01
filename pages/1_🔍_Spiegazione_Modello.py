@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 st.set_page_config(page_title="Spiegazione Modello", page_icon="🔍", layout="wide")
 
@@ -44,4 +45,19 @@ with tab3:
     Se l'Area è **positiva**, si sta accumulando energia. Se è **negativa**, l'energia viene rilasciata.
     """)
     if 'df_tri' in st.session_state and st.session_state['df_tri'] is not None:
-        st.dataframe(st.session_state['df_tri'])
+        df_tri = st.session_state['df_tri']
+        st.dataframe(df_tri)
+        
+        st.markdown("### 📊 Andamento dell'Area nel Tempo")
+        fig = px.bar(
+            df_tri, 
+            x='t', 
+            y='area', 
+            title="Area dei Triangoli Differenziali (Accumulo vs Rilascio)",
+            labels={'t': 'Data', 'area': 'Area (Accumulo/Rilascio)'},
+            color='area',
+            color_continuous_scale=px.colors.diverging.RdBu_r,
+            color_continuous_midpoint=0
+        )
+        fig.update_layout(template="plotly_dark", margin=dict(l=0, r=0, t=40, b=0))
+        st.plotly_chart(fig, use_container_width=True)
