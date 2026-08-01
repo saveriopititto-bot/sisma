@@ -27,6 +27,16 @@ from math_engine.engine import (
     run,
     summarize,
 )
+from math_engine.signature import (
+    SignatureSummary,
+    chen_product,
+    levy_area,
+    path_signature,
+    rolling_levy_area,
+    segment_signature,
+    signature_features,
+    summarize_signature,
+)
 from math_engine.synthetic import synthetic_catalog
 
 __all__ = [
@@ -36,4 +46,7 @@ __all__ = [
     "aggregate", "annual_matrix", "build_edges", "differentiate",
     "energy_from_magnitude", "fetch_catalog", "filter_magnitude_types",
     "magnitude_from_energy", "run", "summarize", "synthetic_catalog",
+    "SignatureSummary", "chen_product", "levy_area", "path_signature",
+    "rolling_levy_area", "segment_signature", "signature_features",
+    "summarize_signature",
 ]
