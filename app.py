@@ -58,6 +58,11 @@ if inputs['execute']:
             data_end=fetch_end
         )
         
+        # Salviamo in sessione per l'ispettore (la pagina "Spiegazione Modello")
+        st.session_state['df_raw'] = df_raw
+        st.session_state['df_events'] = df_events
+        st.session_state['df_tri'] = df_tri
+        
         # Rendering delle metriche
         render_metrics(df_tri, inputs['triennium_start'], inputs['year_zero'], inputs['triennium_end'], inputs['target_year'])
         
